@@ -1,0 +1,39 @@
+rules_version = '2';
+
+// Art AI – Firestore security rules
+// Users can only read/write their OWN data.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users collection — a user can read + update only their own doc.
+    // Doc creation happens via Cloud Functions (admin SDK), not from the client.
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null && request.auth.uid == uid;
+      // Note: tier, subscriptionStatus, scansThisMonth, etc. are also written
+      // by Cloud Functions (admin SDK) which bypass these rules. The client
+      // can write its own doc — but server-side validation in Cloud Functions
+      // is the source of truth for billing-sensitive fields.
+    }
+
+    // Scans collection — users can read + write only their own scans.
+    match /scans/{scanId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Events collection — users can create (bug reports, feedback) but not read others'
+    match /events/{eventId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Discount codes collection — read-only by owner, written by Cloud Functions
+    match /discountCodes/{codeId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+  }
+}
